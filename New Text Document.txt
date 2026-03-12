@@ -1,0 +1,151 @@
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+local Window = Rayfield:CreateWindow({
+   Name = "Prism Hub | Bee Swarm Simulator 🐝",
+   LoadingTitle = "Loading Prism Scripts...",
+   LoadingSubtitle = "by tallywker990",
+   ConfigurationSaving = { Enabled = false },
+   Discord = {
+      Enabled = true,
+      Invite = "2BSmXd8hKY",
+      RememberJoins = true
+   }
+})
+
+local Main = Window:CreateTab("Auto-Farm", 4483362458)
+local Settings = Window:CreateTab("Settings", 4483362458)
+
+-- Variables
+local lp = game.Players.LocalPlayer
+local char = lp.Character or lp.CharacterAdded:Wait()
+local selectedField = "Sunflower Field"
+
+-- Function to find Hive
+local function getHive()
+    for _, v in pairs(workspace.FlowerZones:GetChildren()) do
+        if v.Name:find("Hive") then
+            return v
+        end
+    end
+    return nil
+end
+
+-- --- AUTO-FARM TAB ---
+Main:CreateSection("Full Loop Farm")
+
+Main:CreateDropdown({
+   Name = "Target Field",
+   Options = {"Sunflower Field", "Mushroom Field", "Clover Field", "Blue Flower Field", "Dandelion Field", "Strawberry Field", "Spider Field", "Bamboo Field", "Pineapple Patch", "Pine Tree Forest"},
+   CurrentOption = "Sunflower Field",
+   Callback = function(Option)
+       selectedField = Option
+   end,
+})
+
+Main:CreateToggle({
+   Name = "Enable Full Auto-Loop",
+   CurrentValue = false,
+   Callback = function(Value)
+       _G.AutoLoop = Value
+       task.spawn(function()
+           while _G.AutoLoop do
+               local stats = lp.CoreStats
+               local pollen = stats.Pollen.Value
+               local capacity = stats.Capacity.Value
+               
+               -- Step 1: Check if Bag is Full
+               if pollen >= capacity then
+                   -- GO TO HIVE
+                   Rayfield:Notify({Title = "Status", Content = "Bag Full! Returning to Hive...", Duration = 2})
+                   local hive = getHive()
+                   if hive then
+                       lp.Character.HumanoidRootPart.CFrame = hive.CFrame + Vector3.new(0, 8, 0)
+                       task.wait(1)
+                       -- Simple key press simulation or proximity wait
+                       -- BSS usually auto-converts when standing on hive
+                       while lp.CoreStats.Pollen.Value > 0 and _G.AutoLoop do
+                           task.wait(1)
+                       end
+                   end
+               else
+                   -- GO TO FIELD
+                   local fieldPart = workspace.FlowerZones:FindFirstChild(selectedField)
+                   if fieldPart then
+                       if (lp.Character.HumanoidRootPart.Position - fieldPart.Position).Magnitude > 50 then
+                           lp.Character.HumanoidRootPart.CFrame = fieldPart.CFrame + Vector3.new(0, 5, 0)
+                       end
+                       
+                       -- Start Harvesting
+                       local tool = lp.Character:FindFirstChildOfClass("Tool") or lp.Backpack:FindFirstChildOfClass("Tool")
+                       if tool then
+                           if tool.Parent ~= lp.Character then tool.Parent = lp.Character end
+                           tool:Activate()
+                       end
+                       
+                       -- Collect nearby tokens while farming
+                       local collectibles = workspace:FindFirstChild("Collectibles")
+                       if collectibles then
+                           for _, v in pairs(collectibles:GetChildren()) do
+                               if v:IsA("BasePart") and (v.Position - lp.Character.HumanoidRootPart.Position).Magnitude < 35 then
+                                   v.CFrame = lp.Character.HumanoidRootPart.CFrame
+                               end
+                           end
+                       end
+                   end
+               end
+               task.wait(0.1)
+           end
+       end)
+   end,
+})
+
+Main:CreateSection("Utility")
+
+Main:CreateToggle({
+   Name = "Auto-Token Grabber",
+   CurrentValue = false,
+   Callback = function(Value)
+       _G.AutoToken = Value
+       task.spawn(function()
+           while _G.AutoToken do
+               local collectibles = workspace:FindFirstChild("Collectibles")
+               if collectibles then
+                   for _, v in pairs(collectibles:GetChildren()) do
+                       if v:IsA("BasePart") then
+                           v.CFrame = lp.Character.HumanoidRootPart.CFrame
+                       end
+                   end
+               end
+               task.wait(0.1)
+           end
+       end)
+   end,
+})
+
+-- --- SETTINGS TAB ---
+Settings:CreateSection("Movement")
+
+Settings:CreateSlider({
+   Name = "WalkSpeed",
+   Range = {16, 150},
+   Increment = 1,
+   CurrentValue = 16,
+   Callback = function(Value)
+       lp.Character.Humanoid.WalkSpeed = Value
+   end,
+})
+
+Settings:CreateButton({
+   Name = "Infinite Jump",
+   Callback = function()
+       game:GetService("UserInputService").JumpRequest:Connect(function()
+           lp.Character.Humanoid:ChangeState("Jumping")
+       end)
+   end,
+})
+
+Rayfield:Notify({
+   Title = "Prism BSS Loop",
+   Content = "Select your field and enable Full Auto-Loop!",
+   Duration = 5,
+})
