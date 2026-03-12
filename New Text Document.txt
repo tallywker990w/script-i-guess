@@ -13,33 +13,44 @@ local Window = Rayfield:CreateWindow({
 })
 
 local Main = Window:CreateTab("Auto-Farm", 4483362458)
-local Settings = Window:CreateTab("Settings", 4483362458)
 
 -- Variables
 local lp = game.Players.LocalPlayer
-local char = lp.Character or lp.CharacterAdded:Wait()
 local selectedField = "Sunflower Field"
 
--- Function to find Hive
-local function getHive()
-    for _, v in pairs(workspace.FlowerZones:GetChildren()) do
-        if v.Name:find("Hive") then
-            return v
+-- RELIABLE HIVE FINDER
+local function getMyHive()
+    for _, hive in pairs(workspace.Hives:GetChildren()) do
+        if hive:FindFirstChild("Owner") and hive.Owner.Value == lp.Name then
+            return hive.Floor -- Return the part we can TP to
+        end
+    end
+    -- Fallback: Look for the slot with your name on the board
+    for _, slot in pairs(workspace.Hives:GetChildren()) do
+        local surface = slot:FindFirstChild("SurfaceGui")
+        if surface and surface:FindFirstChild("PlayerName") and surface.PlayerName.Text == lp.Name then
+            return slot.Floor
         end
     end
     return nil
 end
 
--- --- AUTO-FARM TAB ---
-Main:CreateSection("Full Loop Farm")
+-- STAT FINDER
+local function getStats()
+    local s = lp:FindFirstChild("CoreStats") or lp:FindFirstChild("Data") or lp:FindFirstChild("leaderstats")
+    if s then
+        local p = s:FindFirstChild("Pollen")
+        local c = s:FindFirstChild("Capacity")
+        if p and c then return p, c end
+    end
+    return nil, nil
+end
 
 Main:CreateDropdown({
    Name = "Target Field",
    Options = {"Sunflower Field", "Mushroom Field", "Clover Field", "Blue Flower Field", "Dandelion Field", "Strawberry Field", "Spider Field", "Bamboo Field", "Pineapple Patch", "Pine Tree Forest"},
    CurrentOption = "Sunflower Field",
-   Callback = function(Option)
-       selectedField = Option
-   end,
+   Callback = function(Option) selectedField = Option end,
 })
 
 Main:CreateToggle({
@@ -49,44 +60,40 @@ Main:CreateToggle({
        _G.AutoLoop = Value
        task.spawn(function()
            while _G.AutoLoop do
-               local stats = lp.CoreStats
-               local pollen = stats.Pollen.Value
-               local capacity = stats.Capacity.Value
+               local pStat, cStat = getStats()
                
-               -- Step 1: Check if Bag is Full
-               if pollen >= capacity then
-                   -- GO TO HIVE
-                   Rayfield:Notify({Title = "Status", Content = "Bag Full! Returning to Hive...", Duration = 2})
-                   local hive = getHive()
-                   if hive then
-                       lp.Character.HumanoidRootPart.CFrame = hive.CFrame + Vector3.new(0, 8, 0)
-                       task.wait(1)
-                       -- Simple key press simulation or proximity wait
-                       -- BSS usually auto-converts when standing on hive
-                       while lp.CoreStats.Pollen.Value > 0 and _G.AutoLoop do
-                           task.wait(1)
-                       end
-                   end
-               else
-                   -- GO TO FIELD
-                   local fieldPart = workspace.FlowerZones:FindFirstChild(selectedField)
-                   if fieldPart then
-                       if (lp.Character.HumanoidRootPart.Position - fieldPart.Position).Magnitude > 50 then
-                           lp.Character.HumanoidRootPart.CFrame = fieldPart.CFrame + Vector3.new(0, 5, 0)
-                       end
+               if pStat and cStat then
+                   -- If Bag is Full (95% to be safe)
+                   if pStat.Value >= (cStat.Value * 0.95) then
+                       Rayfield:Notify({Title = "Farm", Content = "Bag Full! Going to Hive."})
                        
-                       -- Start Harvesting
-                       local tool = lp.Character:FindFirstChildOfClass("Tool") or lp.Backpack:FindFirstChildOfClass("Tool")
-                       if tool then
-                           if tool.Parent ~= lp.Character then tool.Parent = lp.Character end
-                           tool:Activate()
+                       local myHive = getMyHive()
+                       if myHive then
+                           -- Loop until empty
+                           repeat
+                               lp.Character.HumanoidRootPart.CFrame = myHive.CFrame + Vector3.new(0, 5, 0)
+                               task.wait(1)
+                           until pStat.Value == 0 or not _G.AutoLoop
+                           Rayfield:Notify({Title = "Farm", Content = "Bag Empty! Returning to Field."})
+                       else
+                           Rayfield:Notify({Title = "Error", Content = "Could not find your Hive!"})
                        end
-                       
-                       -- Collect nearby tokens while farming
-                       local collectibles = workspace:FindFirstChild("Collectibles")
-                       if collectibles then
-                           for _, v in pairs(collectibles:GetChildren()) do
-                               if v:IsA("BasePart") and (v.Position - lp.Character.HumanoidRootPart.Position).Magnitude < 35 then
+                   else
+                       -- Farm Logic
+                       local field = workspace.FlowerZones:FindFirstChild(selectedField)
+                       if field then
+                           -- TP to field if far away
+                           if (lp.Character.HumanoidRootPart.Position - field.Position).Magnitude > 30 then
+                               lp.Character.HumanoidRootPart.CFrame = field.CFrame + Vector3.new(0, 5, 0)
+                           end
+                           
+                           -- Click/Swing
+                           local tool = lp.Character:FindFirstChildOfClass("Tool")
+                           if tool then tool:Activate() end
+                           
+                           -- Grab nearby tokens
+                           for _, v in pairs(workspace.Collectibles:GetChildren()) do
+                               if v:IsA("BasePart") and (v.Position - lp.Character.HumanoidRootPart.Position).Magnitude < 25 then
                                    v.CFrame = lp.Character.HumanoidRootPart.CFrame
                                end
                            end
@@ -97,55 +104,4 @@ Main:CreateToggle({
            end
        end)
    end,
-})
-
-Main:CreateSection("Utility")
-
-Main:CreateToggle({
-   Name = "Auto-Token Grabber",
-   CurrentValue = false,
-   Callback = function(Value)
-       _G.AutoToken = Value
-       task.spawn(function()
-           while _G.AutoToken do
-               local collectibles = workspace:FindFirstChild("Collectibles")
-               if collectibles then
-                   for _, v in pairs(collectibles:GetChildren()) do
-                       if v:IsA("BasePart") then
-                           v.CFrame = lp.Character.HumanoidRootPart.CFrame
-                       end
-                   end
-               end
-               task.wait(0.1)
-           end
-       end)
-   end,
-})
-
--- --- SETTINGS TAB ---
-Settings:CreateSection("Movement")
-
-Settings:CreateSlider({
-   Name = "WalkSpeed",
-   Range = {16, 150},
-   Increment = 1,
-   CurrentValue = 16,
-   Callback = function(Value)
-       lp.Character.Humanoid.WalkSpeed = Value
-   end,
-})
-
-Settings:CreateButton({
-   Name = "Infinite Jump",
-   Callback = function()
-       game:GetService("UserInputService").JumpRequest:Connect(function()
-           lp.Character.Humanoid:ChangeState("Jumping")
-       end)
-   end,
-})
-
-Rayfield:Notify({
-   Title = "Prism BSS Loop",
-   Content = "Select your field and enable Full Auto-Loop!",
-   Duration = 5,
 })
